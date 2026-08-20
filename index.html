@@ -154,6 +154,32 @@
     color: var(--crystal-teal);
   }
 
+  .web-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(180deg, #0e2b26, #0a1a17);
+    border: 2px solid #1f5c50;
+    border-radius: 999px;
+    padding: 12px 28px 12px 12px;
+    text-decoration: none;
+    color: var(--ink);
+    transition: border-color 0.2s ease, transform 0.15s ease;
+    margin-top: 14px;
+  }
+  .web-cta:hover { border-color: var(--crystal-teal); transform: translateY(-2px); }
+  .web-crystal {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, rgba(79,224,200,0.5), rgba(79,224,200,0.1) 70%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .web-crystal svg { width: 26px; height: 26px; }
+
   /* Phone mockup */
   .phone-wrap {
     display: flex;
@@ -361,6 +387,19 @@
         </span>
       </a>
       <p class="cta-note">Free · Android · No account needed</p>
+
+      <a class="web-cta" href="game.html">
+        <span class="web-crystal">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L4 9L12 22L20 9L12 2Z" stroke="#4fe0c8" stroke-width="1.6" stroke-linejoin="round" fill="rgba(79,224,200,0.2)"/>
+          </svg>
+        </span>
+        <span class="label">
+          <small id="webCtaHint">OR</small>
+          <strong>Play in Browser</strong>
+        </span>
+      </a>
+      <p class="cta-note">Works on Windows, Mac &amp; Android · Nothing to install</p>
     </div>
 
     <div class="phone-wrap">
@@ -422,6 +461,20 @@
 </main>
 
 <footer>Dungeon Escape — built by Blazing</footer>
+
+<script>
+(function highlightForPlatform() {
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/i.test(ua);
+  const isWindows = /Windows/i.test(ua);
+  const isMac = /Macintosh|Mac OS X/i.test(ua) && !isAndroid;
+  const hint = document.getElementById('webCtaHint');
+  if (!isAndroid && (isWindows || isMac)) {
+    // Windows/Mac visitors: browser play is the primary path, not "or".
+    if (hint) hint.textContent = 'RECOMMENDED FOR YOUR DEVICE';
+  }
+})();
+</script>
 
 <script>
 (async function loadDownloadStats() {
