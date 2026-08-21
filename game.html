@@ -27,26 +27,28 @@
   }
   #wrap {
     position: fixed; inset: 0;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     background: var(--stone-950);
+    gap: 8px;
   }
   #stage {
     position: relative;
-    width: 100%; height: 100%;
+    width: 100%;
+    flex: 1;
     max-width: 520px;
     display: flex; align-items: center; justify-content: center;
+    min-height: 0;
   }
   canvas {
     display: block;
     background: #0b0b10;
     max-width: 100%;
     max-height: 100%;
-    box-shadow: 0 0 60px rgba(0,0,0,0.6);
+    box-shadow: 0 0 60px rgba(0,0,0,0.6), 0 0 0 1px var(--wall);
+    border-radius: 6px;
   }
   #topbar {
-    position: absolute; top: 10px; left: 10px; right: 10px;
-    display: flex; justify-content: space-between; align-items: center;
-    pointer-events: none;
+    position: absolute; top: 10px; left: 10px;
     z-index: 5;
   }
   #backLink {
@@ -54,22 +56,18 @@
     font-size: 12px;
     color: var(--ink-dim);
     text-decoration: none;
-    background: rgba(10,10,20,0.55);
+    background: rgba(10,10,20,0.6);
     padding: 6px 12px;
     border-radius: 999px;
     border: 1px solid var(--wall);
   }
   #controlsHint {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--ink-dim);
-    background: rgba(10,10,20,0.55);
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--wall);
+    text-align: center;
+    padding: 2px 0 4px;
   }
-  @media (max-width: 560px) {
-    #controlsHint { display: none; }
-  }
+  #controlsHint b { color: var(--crystal-teal); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -78,9 +76,9 @@
     <canvas id="game" width="480" height="720"></canvas>
     <div id="topbar">
       <a id="backLink" href="index.html">&larr; Back</a>
-      <div id="controlsHint">Arrow keys / WASD to move</div>
     </div>
   </div>
+  <div id="controlsHint"><b>Desktop:</b> Arrow keys / WASD &nbsp;·&nbsp; <b>Touch:</b> drag anywhere</div>
 </div>
 
 <script>
@@ -231,6 +229,7 @@ function loadCurrentLevel() {
   buildLevel();
   setupCrystals();
   setupEnemies();
+  computeTorchPositions();
   const d = LEVEL_DATA[currentLevel];
   vaultX = W * d.vaultXFrac;
   vaultY = H * d.vaultYFrac;
@@ -451,62 +450,97 @@ function loop(now) {
 
 // ---------- Render ----------
 function drawStoneBg() {
-  ctx.fillStyle = '#0b0b10';
+  const grad = ctx.createRadialGradient(W/2, H*0.35, 40, W/2, H*0.5, H*0.75);
+  grad.addColorStop(0, '#14141f');
+  grad.addColorStop(1, '#08080c');
+  ctx.fillStyle = grad;
   ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.lineWidth = 1;
   for (let x=0;x<=W;x+=cellW) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
   for (let y=0;y<=H;y+=cellH) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
 }
 function drawWalls() {
-  ctx.fillStyle = '#2a2c4a';
-  ctx.strokeStyle = '#3d4066';
   for (const w of walls) {
-    ctx.fillRect(w.x1, w.y1, w.x2-w.x1, w.y2-w.y1);
-    ctx.strokeRect(w.x1, w.y1, w.x2-w.x1, w.y2-w.y1);
+    const ww = w.x2-w.x1, wh = w.y2-w.y1;
+    const grad = ctx.createLinearGradient(w.x1, w.y1, w.x1, w.y2);
+    grad.addColorStop(0, '#33344f');
+    grad.addColorStop(1, '#20213a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(w.x1, w.y1, ww, wh);
+    // beveled highlight (top/left) and shadow (bottom/right) for a carved-stone feel
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w.x1+0.5, w.y2); ctx.lineTo(w.x1+0.5, w.y1); ctx.lineTo(w.x2, w.y1+0.5);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(w.x2-0.5, w.y1); ctx.lineTo(w.x2-0.5, w.y2); ctx.lineTo(w.x1, w.y2-0.5);
+    ctx.stroke();
   }
 }
+const CRYSTAL_COLORS = ['#4fe0c8', '#f2a33c', '#f2d24a', '#b978ea', '#7ee08a', '#ff6b6b'];
+
 function drawCrystals() {
   const t = performance.now()/500;
   for (let i=0;i<crystals.length;i++) {
     if (crystalCollected[i]) continue;
     const c = crystals[i];
-    const pulse = 1 + Math.sin(t + i)*0.08;
+    const color = CRYSTAL_COLORS[i % CRYSTAL_COLORS.length];
+    const pulse = 1 + Math.sin(t + i)*0.12;
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.scale(pulse, pulse);
-    ctx.fillStyle = 'rgba(79,224,200,0.25)';
-    ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#4fe0c8';
-    ctx.beginPath();
-    ctx.moveTo(0,-10); ctx.lineTo(8,0); ctx.lineTo(0,10); ctx.lineTo(-8,0);
-    ctx.closePath(); ctx.fill();
+    // soft outer glow
+    const glow = ctx.createRadialGradient(0,0,0, 0,0,22);
+    glow.addColorStop(0, color + 'aa');
+    glow.addColorStop(1, color + '00');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.fill();
+    // bright orb core
+    const core = ctx.createRadialGradient(-3,-3,0, 0,0,9);
+    core.addColorStop(0, '#ffffff');
+    core.addColorStop(0.4, color);
+    core.addColorStop(1, color);
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fill();
     ctx.restore();
   }
 }
 function drawVault() {
   ctx.save();
   ctx.translate(vaultX, vaultY);
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
   if (!vaultOpen) {
-    ctx.fillStyle = 'rgba(150,150,150,0.15)';
-    ctx.beginPath(); ctx.arc(0,0,45,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#555';
-    ctx.beginPath(); ctx.arc(0,0,25,0,Math.PI*2); ctx.fill();
+    const glow = ctx.createRadialGradient(0,0,0,0,0,42);
+    glow.addColorStop(0,'rgba(150,150,160,0.22)'); glow.addColorStop(1,'rgba(150,150,160,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
+    const body = ctx.createRadialGradient(-6,-6,0,0,0,24);
+    body.addColorStop(0,'#7a7a86'); body.addColorStop(1,'#4a4a56');
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('LOCKED', 0, -35);
+    ctx.fillText('VAULT', 0, -34);
   } else if (!keyCollected) {
-    ctx.fillStyle = 'rgba(242,163,60,0.3)';
-    ctx.beginPath(); ctx.arc(0,0,45,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#f2a33c';
-    ctx.beginPath(); ctx.arc(0,0,25,0,Math.PI*2); ctx.fill();
+    const glow = ctx.createRadialGradient(0,0,0,0,0,46);
+    glow.addColorStop(0,'rgba(242,163,60,0.35)'); glow.addColorStop(1,'rgba(242,163,60,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,46,0,Math.PI*2); ctx.fill();
+    const body = ctx.createRadialGradient(-6,-6,0,0,0,24);
+    body.addColorStop(0,'#ffe1a3'); body.addColorStop(1,'#f2a33c');
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#7a4a12';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('\u2B50', 0, 6);
+    ctx.font = 'bold 13px sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('KEY', 0, -35);
+    ctx.fillText('KEY', 0, -36);
   } else {
-    ctx.fillStyle = 'rgba(0,255,100,0.2)';
-    ctx.beginPath(); ctx.arc(0,0,45,0,Math.PI*2); ctx.fill();
+    const glow = ctx.createRadialGradient(0,0,0,0,0,42);
+    glow.addColorStop(0,'rgba(126,224,138,0.3)'); glow.addColorStop(1,'rgba(126,224,138,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.fill();
   }
   ctx.restore();
 }
@@ -514,23 +548,26 @@ function drawExit() {
   const exitX = W/2, exitY = H - cellH * 1.3;
   ctx.save();
   ctx.translate(exitX, exitY);
-  const w = 70, h = 50;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
   if (!doorUnlocked) {
-    ctx.fillStyle = '#6b4a2b';
-    ctx.fillRect(-w/2,-h/2,w,h);
+    const glow = ctx.createRadialGradient(0,0,0,0,0,40);
+    glow.addColorStop(0,'rgba(242,163,60,0.25)'); glow.addColorStop(1,'rgba(242,163,60,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,40,0,Math.PI*2); ctx.fill();
+    const body = ctx.createRadialGradient(-6,-6,0,0,0,26);
+    body.addColorStop(0,'#f2a33c'); body.addColorStop(0.6,'#c9711f'); body.addColorStop(1,'#7a4212');
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('LOCKED', 0, -h/2-10);
+    ctx.fillText('LOCKED', 0, -38);
   } else {
-    ctx.fillStyle = 'rgba(0,255,100,0.15)';
-    ctx.beginPath(); ctx.arc(0,0,55,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#238242';
-    ctx.fillRect(-w/2,-h/2,w,h);
+    const glow = ctx.createRadialGradient(0,0,0,0,0,50);
+    glow.addColorStop(0,'rgba(57,217,138,0.35)'); glow.addColorStop(1,'rgba(57,217,138,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,50,0,Math.PI*2); ctx.fill();
+    const body = ctx.createRadialGradient(-6,-6,0,0,0,26);
+    body.addColorStop(0,'#8ef0b5'); body.addColorStop(1,'#238242');
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('OPEN', 0, -h/2-10);
+    ctx.fillText('OPEN', 0, -38);
   }
   ctx.restore();
 }
@@ -539,23 +576,53 @@ function drawEnemies() {
     ctx.save();
     ctx.translate(e.x, e.y);
     if (e.chasing) {
-      ctx.fillStyle = 'rgba(255,60,60,0.25)';
+      const glow = ctx.createRadialGradient(0,0,0, 0,0,e.detectionRadius);
+      glow.addColorStop(0, 'rgba(255,60,60,0.22)');
+      glow.addColorStop(1, 'rgba(255,60,60,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath(); ctx.arc(0,0,e.detectionRadius,0,Math.PI*2); ctx.fill();
     }
-    ctx.fillStyle = e.chasing ? '#ff4d4d' : '#e05a5a';
-    ctx.beginPath(); ctx.arc(0,0,e.radius,0,Math.PI*2); ctx.fill();
+    const r = e.radius;
+    const bodyGrad = ctx.createRadialGradient(-r*0.3,-r*0.3,0, 0,0,r);
+    bodyGrad.addColorStop(0, e.chasing ? '#ff8a8a' : '#e88585');
+    bodyGrad.addColorStop(1, e.chasing ? '#e02f2f' : '#c14848');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+    // cute little eyes
+    const eyeOffset = r*0.32, eyeY = -r*0.08, eyeR = r*0.16;
+    ctx.fillStyle = '#1a1010';
+    ctx.beginPath(); ctx.arc(-eyeOffset, eyeY, eyeR, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eyeOffset, eyeY, eyeR, 0, Math.PI*2); ctx.fill();
+    // blush marks
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.ellipse(-eyeOffset*1.4, r*0.28, r*0.18, r*0.1, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(eyeOffset*1.4, r*0.28, r*0.18, r*0.1, 0, 0, Math.PI*2); ctx.fill();
     if (e.chasing) {
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = `bold ${Math.round(r*0.9)}px sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText('!', 0, -e.radius-8);
+      ctx.fillText('!', 0, -r-8);
     }
     ctx.restore();
   }
 }
 function drawPlayer() {
-  ctx.fillStyle = '#39d98a';
-  ctx.beginPath(); ctx.arc(playerX, playerY, playerRadius, 0, Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.translate(playerX, playerY);
+  const glow = ctx.createRadialGradient(0,0,0,0,0,playerRadius*1.8);
+  glow.addColorStop(0, 'rgba(57,217,138,0.35)');
+  glow.addColorStop(1, 'rgba(57,217,138,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0,0,playerRadius*1.8,0,Math.PI*2); ctx.fill();
+  const body = ctx.createRadialGradient(-playerRadius*0.3,-playerRadius*0.3,0, 0,0,playerRadius);
+  body.addColorStop(0, '#8ef0b5');
+  body.addColorStop(1, '#239e5f');
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.arc(0,0,playerRadius,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0,0,playerRadius,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
 }
 function drawHud() {
   ctx.fillStyle = 'rgba(10,10,20,0.6)';
@@ -620,9 +687,42 @@ function drawOverlayScreen(title, subtitle, sub2) {
   ctx.fillText(sub2 || 'Tap or press Space to play again', W/2, H/2 + 45);
 }
 
+let torchPositions = [];
+function computeTorchPositions() {
+  torchPositions = [];
+  const t0 = Math.max(...LEVEL_DATA[currentLevel].walls.map(w => w[1]));
+  const candidates = LEVEL_DATA[currentLevel].walls
+    .filter(([x1,y1,x2,y2]) => y1 > 3) // skip the very top border walls (avoid HUD area)
+    .map(([x1,y1,x2,y2]) => [x1*cellW, y1*cellH]);
+  // deterministic pick, spread across the list
+  const step = Math.max(1, Math.floor(candidates.length / 5));
+  for (let i = 0; i < candidates.length; i += step) {
+    torchPositions.push(candidates[i]);
+    if (torchPositions.length >= 5) break;
+  }
+}
+function drawTorches() {
+  const t = performance.now() / 260;
+  for (let i = 0; i < torchPositions.length; i++) {
+    const [x, y] = torchPositions[i];
+    const flicker = 0.8 + Math.sin(t + i*1.7) * 0.2;
+    ctx.save();
+    ctx.translate(x, y);
+    const glow = ctx.createRadialGradient(0,0,0,0,0,26*flicker);
+    glow.addColorStop(0, 'rgba(242,163,60,0.5)');
+    glow.addColorStop(1, 'rgba(242,163,60,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0,0,26*flicker,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath(); ctx.arc(0,0,3.5*flicker,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
 function render() {
   drawStoneBg();
   drawWalls();
+  drawTorches();
   drawExit();
   drawVault();
   drawCrystals();
