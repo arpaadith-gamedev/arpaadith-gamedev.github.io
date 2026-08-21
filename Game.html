@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dungeon Escape</title>
+<style>
+  :root {
+    --stone-950: #0b0b10;
+    --stone-900: #14141c;
+    --wall: #2a2c40;
+    --torch: #f2a33c;
+    --crystal-teal: #4fe0c8;
+    --crystal-violet: #b978ea;
+    --ink: #eae6da;
+    --ink-dim: #9a97a6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--stone-950);
+    color: var(--ink);
+    font-family: -apple-system, 'Inter', sans-serif;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+  #wrap {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--stone-950);
+    gap: 8px;
+  }
+  #stage {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    max-width: 520px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 0;
+  }
+  canvas {
+    display: block;
+    background: #0b0b10;
+    max-width: 100%;
+    max-height: 100%;
+    box-shadow: 0 0 60px rgba(0,0,0,0.6), 0 0 0 1px var(--wall);
+    border-radius: 6px;
+  }
+  #topbar {
+    position: absolute; top: 10px; left: 10px;
+    z-index: 5;
+  }
+  #backLink {
+    pointer-events: auto;
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-decoration: none;
+    background: rgba(10,10,20,0.6);
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--wall);
+  }
+  #controlsHint {
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-align: center;
+    padding: 2px 0 4px;
+  }
+  #controlsHint b { color: var(--crystal-teal); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game" width="480" height="720"></canvas>
+    <div id="topbar">
+      <a id="backLink" href="index.html">&larr; Back</a>
+    </div>
+  </div>
+  <div id="controlsHint"><b>Desktop:</b> Arrow keys / WASD &nbsp;·&nbsp; <b>Touch:</b> drag anywhere</div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+const LEVEL_DATA = {
+  1: {
+    walls: [[2, 2, 9, 3], [9, 3, 10, 7], [3, 3, 4, 7], [4, 5, 7, 6], [7, 6, 8, 10], [2, 8, 5, 9], [9, 8, 11, 9], [2, 10, 3, 14], [4, 10, 8, 11], [9, 10, 10, 14], [3, 12, 7, 13], [6, 13, 7, 16], [8, 13, 11, 14], [2, 15, 5, 16], [4, 16, 5, 17], [8, 15, 9, 18], [9, 17, 11, 18]],
+    crystals: [[1.5, 3.5], [10.5, 4.5], [2.5, 7.5], [8.5, 11.5], [3.5, 14.5], [10.5, 15.5]],
+    enemies: [{x:10.5,y:4.5,vertical:true,minX:10.5,maxX:10.5,minY:3.5,maxY:6.5,detectionRadius:150}],
+    vaultXFrac: 0.75, vaultYFrac: 0.8
+  },
+  2: {
+    walls: [[2, 2, 5, 3], [7, 2, 10, 3], [2, 4, 3, 8], [5, 4, 10, 5], [9, 5, 10, 10], [3, 7, 8, 8], [2, 9, 5, 10], [6, 9, 7, 14], [8, 10, 11, 11], [2, 12, 5, 13], [4, 13, 5, 17], [7, 13, 10, 14], [9, 14, 10, 17], [2, 16, 4, 17]],
+    crystals: [[2.5, 3.5], [9.5, 3.5], [5.5, 6.5], [2.5, 11.5], [8.5, 12.5], [5.5, 16.5]],
+    enemies: [{x:1.5,y:5.5,vertical:true,minX:1.5,maxX:1.5,minY:3.5,maxY:7.5,detectionRadius:165}],
+    vaultXFrac: 0.25, vaultYFrac: 0.75
+  },
+  3: {
+    walls: [[2, 2, 10, 3], [2, 3, 3, 5], [5, 3, 6, 8], [8, 3, 9, 5], [3, 6, 5, 7], [6, 7, 11, 8], [2, 9, 4, 10], [4, 9, 9, 10], [10, 8, 11, 13], [3, 11, 4, 16], [5, 11, 8, 12], [8, 12, 9, 17], [2, 14, 3, 15], [4, 15, 7, 16], [9, 15, 11, 16], [5, 17, 8, 18]],
+    crystals: [[10.5, 2.5], [2.5, 5.5], [7.5, 6.5], [3.5, 10.5], [9.5, 13.5], [2.5, 15.5]],
+    enemies: [{x:9.5,y:4.5,vertical:true,minX:9.5,maxX:9.5,minY:2.5,maxY:7.5,detectionRadius:180}],
+    vaultXFrac: 0.75, vaultYFrac: 0.78
+  },
+  4: {
+    walls: [[2, 2, 6, 3], [7, 2, 10, 3], [2, 4, 3, 7], [5, 3, 6, 6], [8, 3, 9, 7], [3, 6, 5, 7], [6, 6, 10, 7], [2, 9, 4, 10], [6, 8, 7, 13], [9, 8, 11, 9], [3, 11, 6, 12], [8, 11, 9, 15], [2, 13, 3, 16], [4, 14, 7, 15], [5, 16, 6, 18], [9, 16, 11, 17]],
+    crystals: [[3.5, 4.5], [9.5, 4.5], [5.5, 7.5], [2.5, 10.5], [7.5, 13.5], [4.5, 16.5]],
+    enemies: [{x:3.5,y:5.5,vertical:false,minX:2.5,maxX:5.5,minY:5.5,maxY:5.5,detectionRadius:170}, {x:9.5,y:12.5,vertical:true,minX:9.5,maxX:9.5,minY:11.5,maxY:12.5,detectionRadius:190}],
+    vaultXFrac: 0.25, vaultYFrac: 0.78
+  },
+  5: {
+    walls: [[2, 2, 4, 6], [5, 2, 10, 3], [7, 3, 8, 7], [3, 5, 7, 6], [9, 4, 10, 8], [2, 8, 5, 9], [6, 8, 9, 9], [4, 9, 5, 13], [7, 10, 11, 11], [2, 12, 4, 13], [6, 12, 7, 16], [9, 13, 10, 17], [2, 15, 5, 16], [4, 17, 8, 18]],
+    crystals: [[1.5, 3.5], [9.5, 3.5], [6.5, 6.5], [2.5, 10.5], [8.5, 13.5], [5.5, 16.5]],
+    enemies: [{x:8.5,y:6.5,vertical:true,minX:8.5,maxX:8.5,minY:4.5,maxY:8.5,detectionRadius:185}, {x:10.5,y:12.5,vertical:true,minX:10.5,maxX:10.5,minY:11.5,maxY:12.5,detectionRadius:190}],
+    vaultXFrac: 0.71, vaultYFrac: 0.75
+  },
+  6: {
+    walls: [[2, 2, 9, 3], [2, 4, 3, 7], [5, 3, 6, 6], [8, 3, 9, 8], [3, 6, 5, 7], [6, 7, 10, 8], [2, 9, 6, 10], [7, 9, 8, 13], [9, 10, 11, 11], [3, 12, 4, 16], [5, 12, 8, 13], [8, 13, 10, 14], [6, 15, 7, 18], [2, 16, 5, 17], [8, 16, 11, 17]],
+    crystals: [[3.5, 4.5], [9.5, 5.5], [5.5, 7.5], [2.5, 11.5], [8.5, 14.5], [4.5, 15.5]],
+    enemies: [{x:3.5,y:11.5,vertical:false,minX:2.5,maxX:5.5,minY:11.5,maxY:11.5,detectionRadius:195}, {x:9.5,y:12.5,vertical:true,minX:9.5,maxX:9.5,minY:11.5,maxY:12.5,detectionRadius:190}, {x:2.5,y:14.5,vertical:false,minX:2.5,maxX:5.5,minY:14.5,maxY:14.5,detectionRadius:210}],
+    vaultXFrac: 0.21, vaultYFrac: 0.81
+  },
+  7: {
+    walls: [[2, 2, 10, 3], [2, 4, 3, 6], [5, 3, 6, 8], [8, 3, 9, 6], [3, 6, 5, 7], [6, 6, 8, 7], [9, 6, 11, 7], [2, 9, 4, 10], [6, 8, 7, 13], [9, 8, 10, 13], [3, 11, 6, 12], [2, 13, 3, 16], [4, 14, 7, 15], [8, 14, 11, 15], [5, 16, 8, 17], [8, 17, 9, 18]],
+    crystals: [[3.5, 4.5], [9.5, 4.5], [4.5, 7.5], [2.5, 10.5], [8.5, 13.5], [4.5, 16.5]],
+    enemies: [{x:7.5,y:14.5,vertical:true,minX:7.5,maxX:7.5,minY:12.5,maxY:16.5,detectionRadius:205}, {x:10.5,y:12.5,vertical:true,minX:10.5,maxX:10.5,minY:11.5,maxY:12.5,detectionRadius:190}, {x:2.5,y:16.5,vertical:false,minX:1.5,maxX:3.5,minY:16.5,maxY:16.5,detectionRadius:210}],
+    vaultXFrac: 0.75, vaultYFrac: 0.75
+  },
+};
+
+const MAX_LEVEL = 7;
+const TOTAL_LIVES = 3;
+const GRID_W = 12, GRID_H = 18;
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const cellW = W / GRID_W, cellH = H / GRID_H;
+
+// ---------- Audio (Web Audio API, synthesized - no external files) ----------
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, duration, type, gainVal) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.value = gainVal || 0.15;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  gain.gain.setValueAtTime(gain.gain.value, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  osc.start(now);
+  osc.stop(now + duration);
+}
+const sfx = {
+  crystal: () => { tone(880, 0.12, 'triangle', 0.18); tone(1320, 0.10, 'triangle', 0.12); },
+  key: () => { tone(660, 0.1, 'square', 0.15); setTimeout(()=>tone(990,0.15,'square',0.15),80); },
+  hit: () => { tone(140, 0.25, 'sawtooth', 0.2); },
+  alert: () => { tone(500, 0.08, 'square', 0.1); },
+  levelComplete: () => {
+    [523,659,784,1046].forEach((f,i)=> setTimeout(()=>tone(f,0.18,'triangle',0.15), i*90));
+  },
+  gameOver: () => { tone(220,0.4,'sawtooth',0.18); setTimeout(()=>tone(160,0.5,'sawtooth',0.18),200); }
+};
+
+// ---------- State ----------
+let currentLevel = 1;
+let lives = TOTAL_LIVES;
+let walls = [];
+let crystals = [];
+let crystalCollected = [];
+let score = 0;
+let enemies = [];
+let vaultX = 0, vaultY = 0;
+let vaultOpen = false, keyCollected = false, doorUnlocked = false;
+let playerX = W/2, playerY = cellH * 1.3;
+const playerRadius = cellW * 0.32, playerSpeed = cellW * 5;
+let gameOver = false, gameComplete = false;
+let rewardMessage = '', rewardMessageTimer = 0;
+let dungeonBannerTimer = 0;
+let crystalPulse = 0;
+let rewardPoints = 0;
+
+function rectsOf(arr) {
+  return arr.map(([x1,y1,x2,y2]) => ({x1:x1*cellW,y1:y1*cellH,x2:x2*cellW,y2:y2*cellH}));
+}
+
+function buildLevel() {
+  walls = [];
+  // outer border with start/exit openings (matches native app exactly)
+  walls.push({x1:0,y1:0,x2:W*0.35,y2:cellH});
+  walls.push({x1:W*0.65,y1:0,x2:W,y2:cellH});
+  walls.push({x1:0,y1:H-cellH,x2:W*0.35,y2:H});
+  walls.push({x1:W*0.65,y1:H-cellH,x2:W,y2:H});
+  walls.push({x1:0,y1:0,x2:cellW,y2:H});
+  walls.push({x1:W-cellW,y1:0,x2:W,y2:H});
+  walls = walls.concat(rectsOf(LEVEL_DATA[currentLevel].walls));
+}
+
+function setupCrystals() {
+  crystals = LEVEL_DATA[currentLevel].crystals.map(([x,y]) => ({x: x*cellW, y: y*cellH}));
+  crystalCollected = crystals.map(() => false);
+  score = 0;
+}
+
+function setupEnemies() {
+  enemies = LEVEL_DATA[currentLevel].enemies.map(e => ({
+    x: e.x*cellW, y: e.y*cellH,
+    vertical: e.vertical,
+    minX: e.minX*cellW, maxX: e.maxX*cellW,
+    minY: e.minY*cellH, maxY: e.maxY*cellH,
+    dirX: e.vertical ? 0 : 1, dirY: e.vertical ? 1 : 0,
+    speed: cellW * 1.75, chaseSpeed: cellW * 3, radius: cellW * 0.2,
+    detectionRadius: e.detectionRadius,
+    chasing: false, wasChasing: false
+  }));
+}
+
+function loadCurrentLevel() {
+  buildLevel();
+  setupCrystals();
+  setupEnemies();
+  computeTorchPositions();
+  const d = LEVEL_DATA[currentLevel];
+  vaultX = W * d.vaultXFrac;
+  vaultY = H * d.vaultYFrac;
+  vaultOpen = false; keyCollected = false; doorUnlocked = false;
+  playerX = W/2; playerY = cellH * 1.3;
+}
+
+function showReward(msg) {
+  rewardMessage = msg;
+  rewardMessageTimer = 1.25;
+}
+
+function loseLife() {
+  lives--;
+  sfx.hit();
+  showReward(lives > 0 ? 'OUCH! -1 LIFE' : 'GAME OVER');
+  if (lives <= 0) {
+    gameOver = true;
+    sfx.gameOver();
+    return;
+  }
+  loadCurrentLevel();
+}
+
+function advanceToNextLevel() {
+  rewardPoints += 100;
+  showReward('+100 LEVEL CLEAR!');
+  sfx.levelComplete();
+  if (currentLevel >= MAX_LEVEL) {
+    gameComplete = true;
+    return;
+  }
+  currentLevel++;
+  if (currentLevel === 4) {
+    dungeonBannerTimer = 2.2;
+    showReward('DUNGEON 2 UNLOCKED!');
+  }
+  loadCurrentLevel();
+}
+
+function restartGame() {
+  currentLevel = 1;
+  lives = TOTAL_LIVES;
+  gameOver = false; gameComplete = false;
+  rewardPoints = 0;
+  loadCurrentLevel();
+}
+
+// ---------- Collision ----------
+function rectIntersects(a, b) {
+  return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
+}
+function collidesAt(x, y) {
+  const pb = {x1:x-playerRadius, y1:y-playerRadius, x2:x+playerRadius, y2:y+playerRadius};
+  for (const w of walls) if (rectIntersects(pb, w)) return true;
+  if (!doorUnlocked) {
+    const exitBlock = {x1:W*0.35, y1:H-cellH, x2:W*0.65, y2:H};
+    if (rectIntersects(pb, exitBlock)) return true;
+  }
+  return false;
+}
+function movePlayer(dx, dy) {
+  const nx = playerX + dx, ny = playerY + dy;
+  if (!collidesAt(nx, playerY)) playerX = nx;
+  if (!collidesAt(playerX, ny)) playerY = ny;
+}
+
+function enemyRectIntersects(cx, cy, r, wall) {
+  const closestX = Math.max(wall.x1, Math.min(cx, wall.x2));
+  const closestY = Math.max(wall.y1, Math.min(cy, wall.y2));
+  const dx = cx - closestX, dy = cy - closestY;
+  return (dx*dx + dy*dy) < 1; // used only for point-in-rect equivalent below
+}
+function pointInWall(x, y) {
+  for (const w of walls) if (x >= w.x1 && x < w.x2 && y >= w.y1 && y < w.y2) return true;
+  return false;
+}
+function rectHitsAnyWall(cx, cy, r) {
+  const b = {x1:cx-r, y1:cy-r, x2:cx+r, y2:cy+r};
+  for (const w of walls) if (rectIntersects(b, w)) return true;
+  return false;
+}
+
+function updateEnemy(e, dt) {
+  const distToPlayer = Math.hypot(playerX - e.x, playerY - e.y);
+  e.wasChasing = e.chasing;
+  e.chasing = distToPlayer < e.detectionRadius;
+  if (e.chasing && !e.wasChasing) sfx.alert();
+
+  let nx, ny;
+  if (e.chasing) {
+    const dx = playerX - e.x, dy = playerY - e.y;
+    const len = Math.hypot(dx, dy) || 1;
+    nx = e.x + (dx/len) * e.chaseSpeed * dt;
+    ny = e.y + (dy/len) * e.chaseSpeed * dt;
+  } else {
+    nx = e.x + e.dirX * e.speed * dt;
+    ny = e.y + e.dirY * e.speed * dt;
+  }
+
+  if (rectHitsAnyWall(nx, ny, e.radius)) {
+    if (!e.chasing) {
+      e.dirX *= -1; e.dirY *= -1;
+    }
+    // stay put this frame either way (mirrors native app: bounce off, no move-into-wall)
+  } else {
+    e.x = nx; e.y = ny;
+  }
+
+  if (!e.chasing) {
+    if (e.x <= e.minX) { e.x = e.minX; e.dirX = 1; }
+    if (e.x >= e.maxX) { e.x = e.maxX; e.dirX = -1; }
+    if (e.y <= e.minY) { e.y = e.minY; e.dirY = 1; }
+    if (e.y >= e.maxY) { e.y = e.maxY; e.dirY = -1; }
+  }
+}
+
+// ---------- Input ----------
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  ensureAudio();
+  if ((gameOver || gameComplete) && (e.key === ' ' || e.key === 'Enter')) restartGame();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+let touchActive = false, touchStartX=0, touchStartY=0, touchDX=0, touchDY=0;
+canvas.addEventListener('pointerdown', e => {
+  ensureAudio();
+  if (gameOver || gameComplete) { restartGame(); return; }
+  touchActive = true;
+  const rect = canvas.getBoundingClientRect();
+  touchStartX = (e.clientX - rect.left) * (W/rect.width);
+  touchStartY = (e.clientY - rect.top) * (H/rect.height);
+  touchDX = 0; touchDY = 0;
+});
+canvas.addEventListener('pointermove', e => {
+  if (!touchActive) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (W/rect.width);
+  const cy = (e.clientY - rect.top) * (H/rect.height);
+  touchDX = cx - touchStartX;
+  touchDY = cy - touchStartY;
+});
+window.addEventListener('pointerup', () => { touchActive = false; touchDX=0; touchDY=0; });
+
+function getMoveVector(dt) {
+  let dx = 0, dy = 0;
+  if (keys['arrowleft'] || keys['a']) dx -= 1;
+  if (keys['arrowright'] || keys['d']) dx += 1;
+  if (keys['arrowup'] || keys['w']) dy -= 1;
+  if (keys['arrowdown'] || keys['s']) dy += 1;
+  if (touchActive && (Math.abs(touchDX) > 4 || Math.abs(touchDY) > 4)) {
+    const len = Math.hypot(touchDX, touchDY);
+    dx = touchDX/len; dy = touchDY/len;
+  } else if (dx !== 0 || dy !== 0) {
+    const len = Math.hypot(dx, dy);
+    dx /= len; dy /= len;
+  }
+  return {dx: dx * playerSpeed * dt, dy: dy * playerSpeed * dt};
+}
+
+// ---------- Game loop ----------
+let lastTime = performance.now();
+function loop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (!gameOver && !gameComplete) {
+    spiralRotation += 180 * dt;
+    crystalPulse += dt;
+    const mv = getMoveVector(dt);
+    if (mv.dx !== 0 || mv.dy !== 0) movePlayer(mv.dx, mv.dy);
+
+    for (let i = 0; i < crystals.length; i++) {
+      if (crystalCollected[i]) continue;
+      const c = crystals[i];
+      if (Math.hypot(playerX - c.x, playerY - c.y) < playerRadius + cellW * 0.22) {
+        crystalCollected[i] = true;
+        score++;
+        rewardPoints += 10;
+        showReward('+10 CRYSTAL');
+        sfx.crystal();
+        if (score >= 6) vaultOpen = true;
+      }
+    }
+
+    if (vaultOpen && !keyCollected) {
+      if (Math.hypot(playerX - vaultX, playerY - vaultY) < cellW * 0.72) {
+        keyCollected = true;
+        doorUnlocked = true;
+        rewardPoints += 50;
+        showReward('+50 KEY!');
+        sfx.key();
+      }
+    }
+
+    for (const e of enemies) updateEnemy(e, dt);
+    for (const e of enemies) {
+      if (Math.hypot(playerX - e.x, playerY - e.y) < playerRadius + e.radius) {
+        loseLife();
+        break;
+      }
+    }
+
+    if (doorUnlocked) {
+      const exitX = W/2, exitY = H - cellH * 1.3;
+      if (Math.hypot(playerX - exitX, playerY - exitY) < playerRadius + cellW * 0.36) {
+        advanceToNextLevel();
+      }
+    }
+
+    if (rewardMessageTimer > 0) rewardMessageTimer -= dt;
+    if (dungeonBannerTimer > 0) dungeonBannerTimer -= dt;
+  }
+
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Render ----------
+function drawStoneBg() {
+  const grad = ctx.createRadialGradient(W/2, H*0.35, 40, W/2, H*0.5, H*0.8);
+  grad.addColorStop(0, '#181822');
+  grad.addColorStop(0.6, '#0e0e14');
+  grad.addColorStop(1, '#050507');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // subtle floor-tile checker
+  const tile = cellW;
+  for (let gy = 0; gy < GRID_H; gy++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      if ((gx+gy) % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.012)';
+        ctx.fillRect(gx*tile, gy*tile, tile, tile);
+      }
+    }
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+  ctx.lineWidth = 1;
+  for (let x=0;x<=W;x+=cellW) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0;y<=H;y+=cellH) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  // vignette
+  const vig = ctx.createRadialGradient(W/2,H/2, H*0.35, W/2,H/2, H*0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0,0,W,H);
+}
+function drawWalls() {
+  const brick = cellW * 0.42;
+  for (const w of walls) {
+    const ww = w.x2-w.x1, wh = w.y2-w.y1;
+
+    // drop shadow to lift the wall off the floor
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(w.x1+3, w.y1+4, ww, wh);
+
+    const grad = ctx.createLinearGradient(w.x1, w.y1, w.x1, w.y2);
+    grad.addColorStop(0, '#3a3c5c');
+    grad.addColorStop(1, '#1e1f36');
+    ctx.fillStyle = grad;
+    ctx.fillRect(w.x1, w.y1, ww, wh);
+
+    // brick/mortar texture, clipped to the wall's own bounds
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(w.x1, w.y1, ww, wh);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = 1;
+    let row = 0;
+    for (let by = w.y1; by < w.y2; by += brick*0.62) {
+      const offset = (row % 2 === 0) ? 0 : brick/2;
+      ctx.beginPath(); ctx.moveTo(w.x1, by); ctx.lineTo(w.x2, by); ctx.stroke();
+      for (let bx = w.x1 + offset; bx < w.x2; bx += brick) {
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, by + brick*0.62); ctx.stroke();
+      }
+      row++;
+    }
+    ctx.restore();
+
+    // beveled highlight (top/left) and shadow (bottom/right) for a carved-stone feel
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w.x1+0.5, w.y2); ctx.lineTo(w.x1+0.5, w.y1); ctx.lineTo(w.x2, w.y1+0.5);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.moveTo(w.x2-0.5, w.y1); ctx.lineTo(w.x2-0.5, w.y2); ctx.lineTo(w.x1, w.y2-0.5);
+    ctx.stroke();
+  }
+}
+// Scale factor: native app was designed around ~90px cells; derive proportional
+// scaling for every visual constant ported directly from the native draw code.
+const VS = cellW / 90;
+
+const CRYSTAL_COLORS = ['#00FFFF', '#FF00FF', '#FFFF00', '#00FF00', '#0000FF', '#FF0000'];
+
+function drawCrystals() {
+  for (let i=0;i<crystals.length;i++) {
+    if (crystalCollected[i]) continue;
+    const c = crystals[i];
+    const color = CRYSTAL_COLORS[i % CRYSTAL_COLORS.length];
+    const pulse = Math.sin(crystalPulse*4 + i);
+    const glowRadius = (18 + pulse*4) * VS;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+
+    ctx.fillStyle = hexA(color, 0.14);
+    ctx.beginPath(); ctx.arc(0,0,glowRadius+8*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = hexA(color, 0.31);
+    ctx.beginPath(); ctx.arc(0,0,glowRadius,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0,-10*VS); ctx.lineTo(7*VS,0); ctx.lineTo(0,11*VS); ctx.lineTo(-7*VS,0);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(0,-7*VS); ctx.lineTo(3*VS,0); ctx.lineTo(0,2*VS);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+function hexA(hex, alpha) {
+  const n = parseInt(hex.slice(1),16);
+  const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function drawVault() {
+  const pulse = Math.sin(crystalPulse*3);
+  ctx.save();
+  ctx.translate(vaultX, vaultY);
+  if (vaultOpen) {
+    ctx.fillStyle = `rgba(0,255,180,${55/255})`;
+    ctx.beginPath(); ctx.arc(0,0,(48+pulse*5)*VS,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.fillStyle = `rgba(120,60,255,${45/255})`;
+    ctx.beginPath(); ctx.arc(0,0,(45+pulse*3)*VS,0,Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = vaultOpen ? 'rgb(25,110,90)' : 'rgb(55,35,100)';
+  ctx.beginPath(); ctx.arc(0,0,34*VS,0,Math.PI*2); ctx.fill();
+
+  ctx.strokeStyle = vaultOpen ? 'rgb(0,255,180)' : 'rgb(120,80,220)';
+  ctx.lineWidth = 5*VS;
+  ctx.beginPath(); ctx.arc(0,0,30*VS,0,Math.PI*2); ctx.stroke();
+
+  ctx.fillStyle = vaultOpen ? 'rgb(40,180,140)' : 'rgb(75,50,130)';
+  ctx.beginPath(); ctx.arc(0,0,23*VS,0,Math.PI*2); ctx.fill();
+
+  if (!vaultOpen) {
+    ctx.fillStyle = 'rgb(255,200,40)';
+    ctx.fillRect(-5*VS,-6*VS,10*VS,13*VS);
+    ctx.strokeStyle = 'rgb(255,200,40)';
+    ctx.lineWidth = 3*VS;
+    ctx.beginPath();
+    ctx.arc(0,-5*VS,7*VS,Math.PI,0,false);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#FFFF00';
+    ctx.beginPath(); ctx.arc(0,0,(7+pulse*2)*VS,0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(11*VS)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(vaultOpen ? 'OPEN' : 'VAULT', 0, -42*VS);
+  ctx.restore();
+}
+
+function drawStartMarker() {
+  const x = W/2, y = cellH*1.3;
+  ctx.save();
+  ctx.fillStyle = `rgba(0,255,100,${80/255})`;
+  ctx.beginPath(); ctx.arc(x,y,45*VS,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#00FF00';
+  ctx.beginPath(); ctx.arc(x,y,25*VS,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(18*VS)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('START', x, y+65*VS);
+  ctx.restore();
+}
+
+function drawExitMarker() {
+  const x = W/2, y = H - cellH*1.3;
+  ctx.save();
+  ctx.fillStyle = `rgba(255,215,0,${80/255})`;
+  ctx.beginPath(); ctx.arc(x,y,50*VS,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgb(255,215,0)';
+  ctx.beginPath(); ctx.arc(x,y,28*VS,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(22*VS)}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('EXIT', x-25*VS, y-60*VS);
+  ctx.restore();
+}
+
+function drawDoor() {
+  const x = W/2, y = H - cellH*1.3;
+  const dw = 70*VS, dh = 90*VS;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.textAlign = 'center';
+  if (!doorUnlocked) {
+    ctx.fillStyle = `rgba(255,60,60,${70/255})`;
+    ctx.beginPath(); ctx.arc(0,0,65*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgb(120,35,35)';
+    ctx.fillRect(-dw/2,-dh/2,dw,dh);
+    ctx.fillStyle = '#FFFF00';
+    ctx.beginPath(); ctx.arc(0,0,10*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(20*VS)}px sans-serif`;
+    ctx.fillText('LOCKED', 0, -dh/2-15*VS);
+  } else {
+    ctx.fillStyle = `rgba(0,255,100,${70/255})`;
+    ctx.beginPath(); ctx.arc(0,0,65*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgb(35,130,70)';
+    ctx.fillRect(-dw/2,-dh/2,dw,dh);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(20*VS)}px sans-serif`;
+    ctx.fillText('OPEN', 0, -dh/2-15*VS);
+  }
+  ctx.restore();
+}
+
+function drawEnemies() {
+  for (const e of enemies) {
+    const r = e.radius;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (e.chasing) {
+      ctx.fillStyle = `rgba(255,70,70,${28/255})`;
+      ctx.beginPath(); ctx.arc(0,0,e.detectionRadius,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = `rgba(255,40,70,${45/255})`;
+    ctx.beginPath(); ctx.arc(0,0,r+8*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgb(70,10,25)';
+    ctx.beginPath(); ctx.arc(0,0,r+2*VS,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = e.chasing ? 'rgb(255,75,70)' : 'rgb(220,40,60)';
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+
+    const eyeOffset = 8*VS, eyeY = -6*VS;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-eyeOffset, eyeY, 5*VS, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eyeOffset, eyeY, 5*VS, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(-eyeOffset, eyeY, 2.5*VS, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(eyeOffset, eyeY, 2.5*VS, 0, Math.PI*2); ctx.fill();
+
+    if (e.chasing) {
+      ctx.fillStyle = '#FFFF00';
+      ctx.font = `bold ${Math.round(22*VS)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('!', 0, -r-10*VS);
+    }
+    ctx.restore();
+  }
+}
+
+const SPIRAL_COLORS = ['#FF0000', '#FF5000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF50B4'];
+let spiralRotation = 0;
+function drawPlayer() {
+  ctx.save();
+  ctx.translate(playerX, playerY);
+  ctx.rotate(spiralRotation * Math.PI/180);
+
+  ctx.fillStyle = `rgba(180,80,255,${40/255})`;
+  ctx.beginPath(); ctx.arc(0,0,34*VS,0,Math.PI*2); ctx.fill();
+
+  const rings = 4, pixelsPerRing = 26, ringSpacing = 6.5*VS;
+  let count = 0;
+  for (let r = rings; r >= 1; r--) {
+    const radius = r * ringSpacing;
+    for (let i = 0; i < pixelsPerRing; i++) {
+      const angle = 2*Math.PI*i/pixelsPerRing + r*0.45;
+      const px = Math.cos(angle)*radius, py = Math.sin(angle)*radius;
+      const colorIndex = (count + Math.floor(spiralRotation/12)) % SPIRAL_COLORS.length;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(px-3.2*VS, py-3.2*VS, 6.4*VS, 6.4*VS);
+      ctx.fillStyle = SPIRAL_COLORS[((colorIndex % SPIRAL_COLORS.length)+SPIRAL_COLORS.length)%SPIRAL_COLORS.length];
+      ctx.fillRect(px-2.2*VS, py-2.2*VS, 4.4*VS, 4.4*VS);
+      count++;
+    }
+  }
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-4*VS,-4*VS,8*VS,8*VS);
+  ctx.restore();
+}
+function drawHud() {
+  ctx.fillStyle = 'rgba(10,10,20,0.6)';
+  ctx.fillRect(0,0,W,60);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  const dungeon = currentLevel <= 3 ? 1 : 2;
+  const levelInDungeon = currentLevel <= 3 ? currentLevel : currentLevel - 3;
+  ctx.fillText(`DUNGEON ${dungeon} - LEVEL ${levelInDungeon}`, W/2, 26);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = 'rgba(220,220,235,0.85)';
+  ctx.fillText(`CRYSTALS: ${score}/6`, W/2, 46);
+
+  ctx.textAlign = 'left';
+  ctx.font = '20px sans-serif';
+  let heartStr = '';
+  for (let i=0;i<TOTAL_LIVES;i++) heartStr += (i < lives ? '\u2665' : '\u2661') + ' ';
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fillText(heartStr, 12, 26);
+
+  ctx.textAlign = 'right';
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = 'rgba(220,220,235,0.85)';
+  ctx.fillText(`${rewardPoints} pts`, W-12, 26);
+}
+function drawRewardMessage() {
+  if (rewardMessageTimer <= 0) return;
+  const alpha = Math.min(1, rewardMessageTimer / 0.3);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#f2d24a';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(rewardMessage, W/2, H/2 - 80);
+  ctx.restore();
+}
+function drawDungeonBanner() {
+  if (dungeonBannerTimer <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, dungeonBannerTimer);
+  ctx.fillStyle = 'rgba(10,10,20,0.85)';
+  ctx.fillRect(0, H/2-40, W, 80);
+  ctx.fillStyle = '#f2a33c';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('DUNGEON 2 UNLOCKED!', W/2, H/2+8);
+  ctx.restore();
+}
+function drawOverlayScreen(title, subtitle, sub2) {
+  ctx.fillStyle = 'rgba(5,5,10,0.9)';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#f2a33c';
+  ctx.font = 'bold 30px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, W/2, H/2 - 30);
+  ctx.fillStyle = '#eae6da';
+  ctx.font = '16px sans-serif';
+  ctx.fillText(subtitle, W/2, H/2 + 10);
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = 'rgba(220,220,235,0.7)';
+  ctx.fillText(sub2 || 'Tap or press Space to play again', W/2, H/2 + 45);
+}
+
+let torchPositions = [];
+function computeTorchPositions() {
+  torchPositions = [];
+  const t0 = Math.max(...LEVEL_DATA[currentLevel].walls.map(w => w[1]));
+  const candidates = LEVEL_DATA[currentLevel].walls
+    .filter(([x1,y1,x2,y2]) => y1 > 3) // skip the very top border walls (avoid HUD area)
+    .map(([x1,y1,x2,y2]) => [x1*cellW, y1*cellH]);
+  // deterministic pick, spread across the list
+  const step = Math.max(1, Math.floor(candidates.length / 5));
+  for (let i = 0; i < candidates.length; i += step) {
+    torchPositions.push(candidates[i]);
+    if (torchPositions.length >= 5) break;
+  }
+}
+function drawTorches() {
+  const t = performance.now() / 260;
+  for (let i = 0; i < torchPositions.length; i++) {
+    const [x, y] = torchPositions[i];
+    const flicker = 0.8 + Math.sin(t + i*1.7) * 0.2;
+    ctx.save();
+    ctx.translate(x, y);
+    const glow = ctx.createRadialGradient(0,0,0,0,0,26*flicker);
+    glow.addColorStop(0, 'rgba(242,163,60,0.5)');
+    glow.addColorStop(1, 'rgba(242,163,60,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0,0,26*flicker,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath(); ctx.arc(0,0,3.5*flicker,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function render() {
+  drawStoneBg();
+  drawWalls();
+  drawTorches();
+  drawCrystals();
+  drawVault();
+  drawDoor();
+  drawStartMarker();
+  drawExitMarker();
+  drawEnemies();
+  drawPlayer();
+  drawHud();
+  drawRewardMessage();
+  drawDungeonBanner();
+
+  if (gameOver) {
+    drawOverlayScreen('GAME OVER', `You reached Dungeon ${currentLevel<=3?1:2}, Level ${currentLevel<=3?currentLevel:currentLevel-3}`, 'Tap or press Space to try again');
+  } else if (gameComplete) {
+    drawOverlayScreen('YOU ESCAPED!', 'Both dungeons cleared. Chromaspin is free.', 'Tap or press Space to play again');
+  }
+}
+
+loadCurrentLevel();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
